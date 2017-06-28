@@ -1,4 +1,4 @@
-//ClientTransportPlugin transport socks4|socks5 IP:PORT
+//*ClientTransportPlugin transport socks4|socks5 IP:PORT
 //*HTTPProxy host[:port]
 //*HTTPProxyAuthenticator username:password
 //*HTTPSProxy host[:port]
@@ -65,6 +65,7 @@ func promptInfo(msg string) {
 	dialog.ShowAll()
 	dialog.Run()
 	dialog.Destroy()
+//self.set_default_size(150, 100)
 }
 
 func promptChoice(msg string) int {
@@ -214,6 +215,16 @@ func get_edit_text(edit *gtk.Entry) string {
 	return text
 }
 
+func emitConfigFree(c *bulb.Conn, val string) {
+	fmt.Println("SETCONF / " + val)
+	resp, err := c.Request("SETCONF " + val)
+	if err != nil {
+		promptError("SETCONF on " + val + " failed:" + err.Error())
+		log.Fatal("SETCONF on " + val + " failed:", err)
+	}
+	log.Println("SETCONF response: ", resp)
+}
+
 func emitConfig(c *bulb.Conn, key, val string) {
 	fmt.Println("SETCONF / " + key + " = "  + val)
 	resp, err := c.Request("SETCONF " + key + "=\"" + val + "\"")
@@ -249,17 +260,6 @@ func main() {
 		log.Fatalf("GETINFO bridges failed: %v", err)
 	}
 	log.Printf("GETINFO bridges: %v", resp)
-
-	resp, err = c.Request("SETCONF Bridge=\"127.0.0.1:4567\"")
-	if err != nil {
-		log.Fatalf("SETCONF failed: %v", err)
-	}
-	log.Printf("GETINFO version: %v", resp)
-	resp, err = c.Request("SETCONF Bridge=\"127.0.0.2:123\"")
-	if err != nil {
-		log.Fatalf("SETCONF failed: %v", err)
-	}
-	log.Printf("GETINFO version: %v", resp)
 
 	// Create a new toplevel window, set its title, and connect it to the "destroy" signal to exit the GTK main loop when it is destroyed.
 	mainWin, err = gtk.WindowNew(gtk.WINDOW_TOPLEVEL)
@@ -379,6 +379,40 @@ func main() {
 		uempty := strings.TrimSpace(get_edit_text(uedit)) == ""
 		pempty := strings.TrimSpace(get_edit_text(pedit)) == ""
 
+		if rb2.GetActive() {
+			tvb, err := tv.GetBuffer()
+			if err != nil {
+				promptError("Error reading user-supplied bridge data")
+				return
+			}
+
+			text, err := tvb.GetText(tvb.GetStartIter(), tvb.GetEndIter(), false)
+			if err != nil {
+				promptError("Error reading user-supplied bridge data")
+				return
+			}
+
+			found := false
+			lines := strings.Split(text, "\n")
+
+			for _, line := range lines {
+				line  = strings.TrimSpace(line)
+				if line == "" {
+					continue
+				}
+
+				fmt.Println("Adding bridge: ", line)
+				emitConfig(c, "Bridge", line)
+				found = true
+			}
+
+			if !found {
+				promptError("No bridges supplied by user")
+				return
+			}
+
+		}
+
 		if npcheck.GetActive() {
 
 			if addrempty {
@@ -409,6 +443,21 @@ func main() {
 				}
 			}
 
+/*			if rb2.GetActive() {
+				if s4radio.GetActive() {
+					emitConfigFree(c, "ClientTransportPlugin ... socks4 " + get_edit_text(addredit))
+				} else if s5radio.GetActive() {
+					if !uempty && !pempty {
+						emitConfigFree(c, "ClientTransportPlugin ... socks5 " + get_edit_text(addredit))
+					} else {
+						cfgline := fmt.Sprintf("ClientTransportPlugin ... socks5 %s username=%s password=%s",
+							get_edit_text(addredit), get_edit_text(uedit), get_edit_text(pedit))
+						emitConfigFree(c, cfgline)
+					}
+				}
+
+			} */
+
 			if s5radio.GetActive() && !uempty && !pempty {
 				emitConfig(c, "Socks5ProxyUsername", get_edit_text(uedit))
 				emitConfig(c, "Socks5ProxyPassword", get_edit_text(pedit))
@@ -419,7 +468,7 @@ func main() {
 	})
 
 
-	scrollbox.SetSizeRequest(550, 325)
+	scrollbox.SetSizeRequest(550, 350)
 	Notebook.AppendPage(scrollbox, nbLabel)
 
 	mainWin.Add(Notebook)
